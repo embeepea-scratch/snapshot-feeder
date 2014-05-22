@@ -1,0 +1,154 @@
+#! /usr/bin/python
+
+# This script creates feed files for the images in the directory
+# /var/www/Images.
+# 
+# Here's what it does, at the moment:
+# 
+# For each dataset_id in DATASET_IDS:
+#     Make a list of all the image (png or zip) files in all the RESDIRS under /var/www/Images/dataset_id
+#     Eliminate any images that do not have a version present in all RESDIRS for this dataset_id
+#     Write all the remaining images to a file named /var/www/Images/dataset_id/dataset_id--YYYY-MM-DD.csv, formatted as URLs
+#     Write the file /var/www/Images/dataset_id/feed.csv containing the URL of the file (/var/www/Images/dataset_id/dataset_id--YYYY-MM-DD.csv)
+#       written in the previous step
+# 
+# Currently, this results in all images for each dataset_id being
+# listed in a single csv file, and that single csv file being listed
+# in the dataset_id's feed.csv file.
+# 
+# Ultimately, the intention is to modify this script so that it
+# creates a new csv file for each dataset_id each time it is run,
+# containing only the images from that dataset_id that were not
+# present during the previous run; and it appends the name of the new
+# csv file to the dataset_id's feed.csv file.  That hasn't been
+# implemneted yet, though.
+
+
+import os, re
+
+date_generated = "2014-05-22"
+
+URL_PREFIX = "http://54.235.203.129/Images/"
+
+DIR = "/var/www/Images"
+
+DATASET_IDS = [
+    'averagetemp-monthly-cmb',
+    'droughtoutlook-monthly-cpc',
+    'oisst-daily-cdr',
+    'precipoutlook-monthly-cpc',
+    'probseverewx-dayofyear-spc',
+    'tempanomaly-annual-nnvl',
+    'tempanomaly-monthly-nnvl',
+    'tempoutlook-monthly-cpc',
+    'totalprecip-monthly-cmb',
+    'usdroughtmonitor-weekly-ndmc'
+    ]
+
+RESDIRS = [
+    '620',
+    '1000',
+    'hd',
+    'hdsd',
+    'diy'
+]
+
+def subdirs(dir):
+    return [file for file in os.listdir(dir) if os.path.isdir(os.path.join(dir,file))]
+
+#def imageDict(file):
+#    m = re.search('(\d\d\d\d-\d\d-\d\d)\.((png)|(zip))$', file)
+#    if m:
+#        return { 'date' : m.group(1), 'file' : file }
+#    else:
+#        return None
+
+def csvheaders():
+    return "guid,dsmn,ptk,stk,title,image_url,about,date_generated,download_title,download_url"
+
+def csvline(id, date, imgs):
+    guid = id + "-" + date
+    dsmn = id
+    ptk  = re.sub('-\d\d-\d\d$', '', date)
+    stk  = re.sub('^\d\d\d\d-', '', date)
+    title = id + " for " + date
+    image_url = URL_PREFIX + os.path.join(id, '620', imgs['620'][date])
+    about = ""
+    download_title = ", ".join(RESDIRS)
+    download_url = ",".join([ URL_PREFIX + os.path.join(id, subdir, imgs[subdir][date]) for subdir in RESDIRS ])
+    return ",".join( ('"' + f + '"') for f in [guid,
+                                               dsmn,
+                                               ptk,
+                                               stk,
+                                               title,
+                                               image_url,
+                                               about,
+                                               date_generated,
+                                               download_title,
+                                               download_url]
+                     )
+
+# return a dict of the images in subdir; keys are dates, values are filenames
+def images(id,subdir):
+    imageDict = {}
+    for file in os.listdir(os.path.join(DIR,id,subdir)):
+	m = re.search('(\d\d\d\d-\d\d-\d\d)\.((png)|(zip))$', file)
+	if m:
+            imageDict[m.group(1)] = file
+    return imageDict
+
+csvfiles = []
+
+for id in DATASET_IDS:
+    imgs = {}
+    datekeys = {}
+    #sdirs = subdirs(os.path.join(DIR,id))
+    for subdir in RESDIRS:
+        imgs[subdir] = images(id,subdir)
+        datekeys[subdir] = set( imgs[subdir].keys() )
+    # set commonDates to the set of dates present in all img subdirs
+    commonDates = datekeys[RESDIRS[0]].intersection( *[datekeys[subdir] for subdir in RESDIRS] )
+    # check for images in each subdir whose dates are not in commonDates
+    for subdir in RESDIRS:
+        extraImgs = datekeys[subdir].difference(commonDates)
+        if len(extraImgs) > 0:
+            print "Warning: images found in %s/%s/%s for dates not present in all %s/%s/* subdirs" % (
+                DIR, id, subdir, DIR, id)
+    csvfile = os.path.join(id, id + "--" + date_generated + ".csv")
+    with open(os.path.join(DIR, csvfile), "w") as f:
+        f.write(csvheaders() + "\n")
+        for date in sorted(commonDates):
+            f.write(csvline(id, date, imgs) + "\n")
+    print "wrote %s" % csvfile
+    feedfile = os.path.join(DIR, id, "feed.csv")
+    with open(os.path.join(DIR, feedfile), "w") as f:
+        f.write(URL_PREFIX + csvfile + "\n")
+    print "wrote %s" % feedfile
+
+
+#feedfile = os.path.join(DIR, "feed.csv")
+#with open(feedfile, "w") as f:
+#    for csvfile in csvfiles:
+#        f.write(URL_PREFIX + csvfile + "\n")
+#print "wrote %s" % feedfile
+
+#guid:                 "usdm-2000-01-04"
+#dsmn:                 "usdm"
+#ptk:                  "2000"
+#stk:                  "01-04"
+#title:                "USDM for 2000-01-04",
+#image_url:            "http://datasnapshots-images.nemac.com:8080/usdm/620/2000/usdm--620--2000-01-04.png",
+#about:                "",
+#date_generated:       "2000-01-04",
+#download_title:       "620 PX, 940 PX, High res",
+#download_url          "example.com,example.com,example.com"
+#
+
+
+
+
+
+
+
+
+
