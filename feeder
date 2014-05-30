@@ -53,8 +53,8 @@ RESDIRS = [
     'diy'
 ]
 
-def subdirs(dir):
-    return [file for file in os.listdir(dir) if os.path.isdir(os.path.join(dir,file))]
+#def subdirs(dir):
+#    return [file for file in os.listdir(dir) if os.path.isdir(os.path.join(dir,file))]
 
 #def imageDict(file):
 #    m = re.search('(\d\d\d\d-\d\d-\d\d)\.((png)|(zip))$', file)
@@ -63,19 +63,25 @@ def subdirs(dir):
 #    else:
 #        return None
 
-def csvheaders():
+def csvheader():
+    """Return a string containing a comma-separated list of field names, which can be used as a header
+    line in a CSV file; the string does NOT include a newline at the end."""
     return "guid,dsmn,ptk,stk,title,image_url,about,date_generated,download_title,download_url"
 
-def csvline(id, date, imgs):
-    guid = id + "-" + date
-    dsmn = id
+def csvline(dsmn, date, image_url, downloads):
+    """Return a string containing a comma-separated list of field values for a single line in a CSV file,
+    coresponding to a specific dsmn and date.  `dsmn` should be the id (machine name) of a dataset,
+    `date` should be a date in YYYY-MM-DD format, and `downloads` should be an array of all the download images
+    for the given data set and date."""
+    guid = dsmn + "-" + date
     ptk  = re.sub('-\d\d-\d\d$', '', date)
     stk  = re.sub('^\d\d\d\d-', '', date)
-    title = id + " for " + date
-    image_url = URL_PREFIX + os.path.join(id, '620', imgs['620'][date])
+    title = dsmn + " for " + date
+    #image_url = URL_PREFIX + os.path.join(dsmn, '620', imgs['620'][date])
+    #image_url = URL_PREFIX + os.path.join(dsmn, 'web', "%s--web--%s.png" % (dsmn, date))
     about = ""
     download_title = ", ".join(RESDIRS)
-    download_url = ",".join([ URL_PREFIX + os.path.join(id, subdir, imgs[subdir][date]) for subdir in RESDIRS ])
+    download_url = ",".join([(URL_PREFIX + file) for file in downloads])
     return ",".join( ('"' + f + '"') for f in [guid,
                                                dsmn,
                                                ptk,
@@ -99,12 +105,11 @@ def images(id,subdir):
 
 csvfiles = []
 
-for id in DATASET_IDS:
+for dsmn in DATASET_IDS:
     imgs = {}
     datekeys = {}
-    #sdirs = subdirs(os.path.join(DIR,id))
     for subdir in RESDIRS:
-        imgs[subdir] = images(id,subdir)
+        imgs[subdir] = images(dsmn,subdir)
         datekeys[subdir] = set( imgs[subdir].keys() )
     # set commonDates to the set of dates present in all img subdirs
     commonDates = datekeys[RESDIRS[0]].intersection( *[datekeys[subdir] for subdir in RESDIRS] )
@@ -113,18 +118,28 @@ for id in DATASET_IDS:
         extraImgs = datekeys[subdir].difference(commonDates)
         if len(extraImgs) > 0:
             print "Warning: %1d images found in %s/%s/%s for dates not present in all %s/%s/* subdirs" % (
-                len(extraImgs), DIR, id, subdir, DIR, id)
+                len(extraImgs), DIR, dsmn, subdir, DIR, dsmn)
             for img in extraImgs:
                 print "    %s" % img
-    csvfile = os.path.join(id, id + "--" + date_generated + ".csv")
+    csvfile = os.path.join(dsmn, dsmn + "--" + date_generated + ".csv")
     nimages = 0
+    web_image_dir = os.path.join(DIR, dsmn, "web")
+    if not os.path.exists(web_image_dir):
+        os.mkdir(web_image_dir)
     with open(os.path.join(DIR, csvfile), "w") as f:
-        f.write(csvheaders() + "\n")
+        f.write(csvheader() + "\n")
         for date in sorted(commonDates):
-            f.write(csvline(id, date, imgs) + "\n")
+            web_image = "%s--web--%s.png" % (dsmn, date)
+            image_url = URL_PREFIX + os.path.join(dsmn, 'web', web_image)
+            if os.path.exists(os.path.join(DIR, dsmn, "web", web_image)):
+                os.remove(os.path.join(DIR, dsmn, "web", web_image))
+            os.symlink(os.path.join("..", "620", imgs["620"][date]), os.path.join(DIR, dsmn, "web", web_image))
+            f.write(csvline(dsmn, date, image_url,
+                            [os.path.join(dsmn, res, imgs[res][date]) for res in RESDIRS]
+                            ) + "\n")
             nimages += 1
     print "wrote %1d images to %s" % (nimages, os.path.join(DIR, csvfile))
-    feedfile = os.path.join(DIR, id, "feed.csv")
+    feedfile = os.path.join(DIR, dsmn, "feed.csv")
     with open(os.path.join(DIR, feedfile), "w") as f:
         f.write(URL_PREFIX + csvfile + "\n")
     print "wrote %s" % feedfile
