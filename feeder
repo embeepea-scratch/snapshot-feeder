@@ -112,14 +112,18 @@ for id in DATASET_IDS:
     for subdir in RESDIRS:
         extraImgs = datekeys[subdir].difference(commonDates)
         if len(extraImgs) > 0:
-            print "Warning: images found in %s/%s/%s for dates not present in all %s/%s/* subdirs" % (
-                DIR, id, subdir, DIR, id)
+            print "Warning: %1d images found in %s/%s/%s for dates not present in all %s/%s/* subdirs" % (
+                len(extraImgs), DIR, id, subdir, DIR, id)
+            for img in extraImgs:
+                print "    %s" % img
     csvfile = os.path.join(id, id + "--" + date_generated + ".csv")
+    nimages = 0
     with open(os.path.join(DIR, csvfile), "w") as f:
         f.write(csvheaders() + "\n")
         for date in sorted(commonDates):
             f.write(csvline(id, date, imgs) + "\n")
-    print "wrote %s" % csvfile
+            nimages += 1
+    print "wrote %1d images to %s" % (nimages, os.path.join(DIR, csvfile))
     feedfile = os.path.join(DIR, id, "feed.csv")
     with open(os.path.join(DIR, feedfile), "w") as f:
         f.write(URL_PREFIX + csvfile + "\n")
