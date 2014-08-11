@@ -134,10 +134,11 @@ for dsmn in DATASET_IDS:
             if os.path.exists(os.path.join(DIR, dsmn, "web", web_image)):
                 os.remove(os.path.join(DIR, dsmn, "web", web_image))
             os.symlink(os.path.join("..", "620", imgs["620"][date]), os.path.join(DIR, dsmn, "web", web_image))
-            f.write(csvline(dsmn, date, image_url,
-                            [os.path.join(dsmn, res, imgs[res][date]) for res in RESDIRS]
-                            ) + "\n")
-            nimages += 1
+            if date != "0000-00-00":
+                f.write(csvline(dsmn, date, image_url,
+                                [os.path.join(dsmn, res, imgs[res][date]) for res in RESDIRS]
+                                ) + "\n")
+                nimages += 1
     print "wrote %1d images to %s" % (nimages, os.path.join(DIR, csvfile))
     feedfile = os.path.join(DIR, dsmn, "feed.csv")
     with open(os.path.join(DIR, feedfile), "w") as f:
