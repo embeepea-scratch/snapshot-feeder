@@ -26,9 +26,9 @@
 
 import os, re
 
-date_generated = "2014-05-22"
+date_generated = "2015-01-23"
 
-URL_PREFIX = "http://54.235.203.129/Images/"
+URL_PREFIX = "http://larry.nemac.org/Images/"
 
 DIR = "/var/www/Images"
 
@@ -51,6 +51,14 @@ RESDIRS = [
     'hd',
     'hdsd',
     'diy'
+]
+
+RESDIR_TITLES = [
+    'Small: 620px',
+    'Large: 1000px',
+    'High Definition: 1920px',
+    'HD w/SD Title Safe: 1920px',
+    'Full Resolution Assets'
 ]
 
 #def subdirs(dir):
@@ -80,7 +88,7 @@ def csvline(dsmn, date, image_url, downloads):
     #image_url = URL_PREFIX + os.path.join(dsmn, '620', imgs['620'][date])
     #image_url = URL_PREFIX + os.path.join(dsmn, 'web', "%s--web--%s.png" % (dsmn, date))
     about = ""
-    download_title = ", ".join(RESDIRS)
+    download_title = ", ".join(RESDIR_TITLES)
     download_url = ",".join([(URL_PREFIX + file) for file in downloads])
     return ",".join( ('"' + f + '"') for f in [guid,
                                                dsmn,
