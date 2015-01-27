@@ -1,5 +1,5 @@
 This project contains the script `feeder` which generates and/or
-updates a set of CSV _feed_ files that allow the Drupal Data Snapshots
+updates a set of CSV _feed_ files that enables the Drupal Data Snapshots
 module to import metadata associated with an archive of images.
 
 Overview
@@ -15,27 +15,27 @@ distinct sources of data.  Each Data Source corresponds to a specific
 data set which issues new data releases on a regular basis.  For example,
 the "Total Monthly Precipitation" data source issues a new data release
 each month, and the "Drought Monitor" data source issues a new data
-release each week.  The site has a small number of nodes of this type;
+release each week.  There will be a small number of nodes of this type;
 each one must be entered/edited manually, and its content generally does
 not change very often.
 
 Nodes of the _Data Snapshot_ content type correspond to data associated
 with a specific date for one _Data Source_.  Each _Data Snapshot_ node 
-stores links to several images representing the
+stores the URLs to several images representing the
 data from that data source at that date.  For example, there is one
 _Data Snapshot_ node corresponding to each month's data release for
 the "Total Monthly Precipitation" data source.  Each of these nodes
 contains links to 5 different images at various sizes/resolutions.
 
-In general there are many nodes of type _Data Snapshot_ in the site:
-for each data source, there is a _Data Snapshot_ node corresponding
+In general there are many nodes of type _Data Snapshot_.
+Ror each data source, there is a _Data Snapshot_ node corresponding
 to each date for which there are images from that data source.
 These nodes are typically not entered manually, rather they are imported
 in batches either automatically, or via the Drupal administrative
 interface.
 
 Note that the _Data Snapshot_ nodes do not store the images themselves --
-only links to them; the images are expected to be hosted on
+only the URLS of them; the images are expected to be hosted on
 an image server that is external to the Drupal site.
 
 This file documents the file and directory structure that must be
@@ -74,20 +74,20 @@ directories.
 The names of the image files follow the very specific pattern:
 
 ```
-    [machine-name]-[resolution]-YYYY-MM-DD.*
+    [machine-name]-[resolution]-[YYYY-MM-DD].*
 ```
 
 In addition to the resolution directories that contain the images
-themselves, each data source image directory also contains one additional
-resolution directory named `web`.  This directory does not contain images
-but rather contains symlinks to images in one of the other resolution directories
-These symlinks are used in contexts where a URL
-with a predictable pattern is needed to point to an image suitable for
-displaying in a web page.  These symlinks typically refer to the images
-in the `620` resolution directory, but the names of the `web` symlinks can
-be easily constructed from the data source name and date, as opposed
-to the names of the `620` resolution images, which include the image height
-which is not the same for every data set.
+themselves, each data source image directory also contains one
+additional resolution directory named `web`.  This directory does not
+contain images but rather contains symlinks to images in one of the
+other resolution directories These symlinks are used in contexts where
+a URL with a predictable pattern is needed to point to an image
+suitable for displaying in a web page.  These symlinks typically refer
+to the images in the `620` resolution directory, but the names of the
+`web` symlinks can be easily constructed from the data source name and
+date, as opposed to the names of the `620` resolution images, which
+include the image height which is not the same for every data set.
 
 For example:
 
@@ -144,3 +144,79 @@ For example:
         usdroughtmonitor-weekly-ndmc--web--2010-01-12.png
     ...
 ```
+
+Feed Files
+----------
+
+The Data Snapshots module imports images URLS and metadata from the image
+server through a collection of _feed_ files.  There are two types of feed files:
+a single _master feed file_, and many individual _snapshot feed files_.
+
+The individual _snapshot feed files_ are located in the data source image directories.
+Each line in one of these files contains a comma-delimited set of fields that give
+the metadata and URLs associated with a _Data Snapshot_ node.  The
+snapshot feed files are named according to the pattern
+
+  ```
+      [machine-name]--[YYYY-MM-DD-HH-mm-ss].csv
+  ```
+
+where `[machine-name]` is the machine name of the data source, and `[YYYY-MM-DD-HH-mm-ss]` is
+a time stamp that indicates when the feed file was generated.
+  
+The intention for these snapshot feed files is that whenever new images are added
+for a data source, a new snapshot feed file is created for that data source, containing
+the image URLS and metadata for the _Data Snapshot_ nodes corresponding to those new
+images.
+
+The _maser feed file_ is named `feed.csv` and should be located in the
+`IMAGE_ROOT` directory.  This file should contain the URLs of all the
+individual snapshot feed files.
+
+The Import Process
+------------------
+
+On the Data Snapshots module settings page in the Drupal
+administrative user interface, there is a button labeled _Run Import
+Now_, and a text field labeled _Import URL_.  The _Run Import Now_
+button will cause Drupal to download the master feed file from the
+given _Import URL_, examine the list of snapshot feed file URLs that
+it contains, and to download any of those snapshot feed files that it has
+not already downloaded.  For each new snapshot feed file downloaded,
+the module parses its contents and creates a new Data Snapshot node
+for each line in the file.  The module keeps track of the snapshot feed
+file URLs that it downloads and will not download or process the same
+file twice.
+
+Feed Generation and Updating
+----------------------------
+
+The `feeder` script examines all the images in the entire IMAGE_ROOT
+directory heirarchy, and generates or updates both the master feed
+file and the individual snapshot feed files accordingly.
+
+By default, when invoked with no arguments, the `feeder` examines both
+the existing images and the existing snapshot feed files present for
+each data source.  If there are any images present that are not
+included in any existing snapshot feed files for the data source, it
+creates a new snapshot feed file for those images.  (No new snapshot
+feed file is created for a data source if all the images for it are
+already contained in existing snapshot feed files.)  For each new
+snapshot feed file it creates, the `feeder` script updates the master
+feed file by appending the URL of the new snapshot feed file to the
+end.
+
+So, the normal workflow for adding images to the image server
+and importing new Data Snapshot nodes into the site is as follows:
+
+  1. Add new batches of images to the appropriate directories
+     under IMAGE_ROOT on the image server
+  2. Run the _feeder_ script on the image server
+  3. Click the _Run Import Now_ button on the Data Snapshots module
+     settings page in the Drupal administrative user interface
+
+The `feeder` script can also be run with varous command-line arguments
+which cause it to behave differently, for example to regenerate new
+feed files for all images, or to limit the number of images included
+in any one snapshot feed file.  Run `feeder --help`, or see the source
+code and comments, for details.
