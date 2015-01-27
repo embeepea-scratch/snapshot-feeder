@@ -148,7 +148,7 @@ For example:
 Feed Files
 ----------
 
-The Data Snapshots module imports images URLS and metadata from the image
+The Data Snapshots module imports image URLS and metadata from the image
 server through a collection of _feed_ files.  There are two types of feed files:
 a single _master feed file_, and many individual _snapshot feed files_.
 
@@ -162,7 +162,10 @@ snapshot feed files are named according to the pattern
   ```
 
 where `[machine-name]` is the machine name of the data source, and `[YYYY-MM-DD-HH-mm-ss]` is
-a time stamp that indicates when the feed file was generated.
+a time stamp that indicates when the feed file was generated.  This time stamp does
+not necessarily relate to the dates of the images mentioned in the file -- it is simply
+used as a unique key to make it easy to keep track of whether the file has been downloaded and
+processed.
   
 The intention for these snapshot feed files is that whenever new images are added
 for a data source, a new snapshot feed file is created for that data source, containing
@@ -195,14 +198,14 @@ The `feeder` script examines all the images in the entire IMAGE_ROOT
 directory heirarchy, and generates or updates both the master feed
 file and the individual snapshot feed files accordingly.
 
-By default, when invoked with no arguments, the `feeder` examines both
+By default, when invoked with no arguments, `feeder` examines both
 the existing images and the existing snapshot feed files present for
 each data source.  If there are any images present that are not
 included in any existing snapshot feed files for the data source, it
 creates a new snapshot feed file for those images.  (No new snapshot
 feed file is created for a data source if all the images for it are
 already contained in existing snapshot feed files.)  For each new
-snapshot feed file it creates, the `feeder` script updates the master
+snapshot feed file it creates, `feeder` updates the master
 feed file by appending the URL of the new snapshot feed file to the
 end.
 
@@ -210,12 +213,18 @@ So, the normal workflow for adding images to the image server
 and importing new Data Snapshot nodes into the site is as follows:
 
   1. Add new batches of images to the appropriate directories
-     under IMAGE_ROOT on the image server
-  2. Run the _feeder_ script on the image server
+     under `IMAGE_ROOT` on the image server.  It does not really matter
+     how many images are added, or whether images are added to all
+     of the data sources, or just some.  It _is_ important, though,
+     that a complete set of resolutions be added for each date
+     for which images are added to a data source.
+  2. Run the _feeder_ script on the image server to update the feed files.
   3. Click the _Run Import Now_ button on the Data Snapshots module
-     settings page in the Drupal administrative user interface
+     settings page in the Drupal administrative user interface to
+     import the new feed files and create the corresponding Data Snapshot
+     nodes.
 
-The `feeder` script can also be run with varous command-line arguments
+`feeder` can also be run with varous command-line arguments
 which cause it to behave differently, for example to regenerate new
 feed files for all images, or to limit the number of images included
 in any one snapshot feed file.  Run `feeder --help`, or see the source
