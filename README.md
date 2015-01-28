@@ -158,7 +158,7 @@ the metadata and URLs associated with a _Data Snapshot_ node.  The
 snapshot feed files are named according to the pattern
 
   ```
-      [machine-name]--[YYYY-MM-DD-HH-mm-ss].csv
+      [machine-name]--[YYYY-MM-DD--HH-mm-ss].csv
   ```
 
 where `[machine-name]` is the machine name of the data source, and `[YYYY-MM-DD-HH-mm-ss]` is

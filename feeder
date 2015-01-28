@@ -5,7 +5,7 @@
 # 
 # Here's what it does, at the moment:
 # 
-# For each dataset_id in DATASET_IDS:
+# For each dataset_id in DATA_SOURCE_IDS:
 #     Make a list of all the image (png or zip) files in all the RESDIRS under /var/www/Images/dataset_id
 #     Eliminate any images that do not have a version present in all RESDIRS for this dataset_id
 #     Write all the remaining images to a file named /var/www/Images/dataset_id/dataset_id--YYYY-MM-DD.csv, formatted as URLs
@@ -24,72 +24,42 @@
 # implemneted yet, though.
 
 
-import os, re
+import os, re, datetime, sys, csv
+import Config
 
-date_generated = "2015-01-23"
+def get_timestamp_string():
+    """Return a string of the form YYYY-MM-DD-HH-mm-ss, representing the
+    current date/time."""
+    n = datetime.datetime.now()
+    return "%04d-%02d-%02d--%02d-%02d-%02d" % (
+        n.year,
+        n.month+1,
+        n.day,
+        n.hour,
+        n.minute,
+        n.second)
 
-URL_PREFIX = "http://larry.nemac.org/Images/"
+date_generated = get_timestamp_string()
 
-DIR = "/var/www/Images"
-
-DATASET_IDS = [
-    'averagetemp-monthly-cmb',
-    'droughtoutlook-monthly-cpc',
-    'oisst-daily-cdr',
-    'precipoutlook-monthly-cpc',
-    'probseverewx-dayofyear-spc',
-    'tempanomaly-annual-nnvl',
-    'tempanomaly-monthly-nnvl',
-    'tempoutlook-monthly-cpc',
-    'totalprecip-monthly-cmb',
-    'usdroughtmonitor-weekly-ndmc'
-    ]
-
-RESDIRS = [
-    '620',
-    '1000',
-    'hd',
-    'hdsd',
-    'diy'
-]
-
-RESDIR_TITLES = [
-    'Small: 620px',
-    'Large: 1000px',
-    'High Definition: 1920px',
-    'HD w/SD Title Safe: 1920px',
-    'Full Resolution Assets'
-]
-
-#def subdirs(dir):
-#    return [file for file in os.listdir(dir) if os.path.isdir(os.path.join(dir,file))]
-
-#def imageDict(file):
-#    m = re.search('(\d\d\d\d-\d\d-\d\d)\.((png)|(zip))$', file)
-#    if m:
-#        return { 'date' : m.group(1), 'file' : file }
-#    else:
-#        return None
-
-def csvheader():
+def snapshot_feed_header():
     """Return a string containing a comma-separated list of field names, which can be used as a header
     line in a CSV file; the string does NOT include a newline at the end."""
     return "guid,dsmn,ptk,stk,title,image_url,about,date_generated,download_title,download_url"
 
-def csvline(dsmn, date, image_url, downloads):
+def snapshot_feed_line(dsmn, date, image_url, downloads):
     """Return a string containing a comma-separated list of field values for a single line in a CSV file,
-    coresponding to a specific dsmn and date.  `dsmn` should be the id (machine name) of a dataset,
+    coresponding to a specific dsmn and date.  `dsmn` should be the id (machine name) of a data source,
     `date` should be a date in YYYY-MM-DD format, and `downloads` should be an array of all the download images
-    for the given data set and date."""
+    for the given data source and date."""
     guid = dsmn + "-" + date
     ptk  = re.sub('-\d\d-\d\d$', '', date)
     stk  = re.sub('^\d\d\d\d-', '', date)
     title = dsmn + " for " + date
-    #image_url = URL_PREFIX + os.path.join(dsmn, '620', imgs['620'][date])
-    #image_url = URL_PREFIX + os.path.join(dsmn, 'web', "%s--web--%s.png" % (dsmn, date))
+    #image_url = Config.URL_PREFIX + os.path.join(dsmn, '620', imgs['620'][date])
+    #image_url = Config.URL_PREFIX + os.path.join(dsmn, 'web', "%s--web--%s.png" % (dsmn, date))
     about = ""
-    download_title = ", ".join(RESDIR_TITLES)
-    download_url = ",".join([(URL_PREFIX + file) for file in downloads])
+    download_title = ", ".join(Config.RESDIR_TITLES)
+    download_url = ",".join([(Config.URL_PREFIX + file) for file in downloads])
     return ",".join( ('"' + f + '"') for f in [guid,
                                                dsmn,
                                                ptk,
@@ -102,81 +72,130 @@ def csvline(dsmn, date, image_url, downloads):
                                                download_url]
                      )
 
-# return a dict of the images in subdir; keys are dates, values are filenames
-def images(id,subdir):
+def scan_res_images(dsmn,resdir):
+    """Return a dict of all existing image files for a given data source
+    and resolution.  dsmn is the machine name of the data source, and
+    resdir is the resolution directory name.  Specifically, looks for
+    files in IMAGE_ROOT/dsmn/resdir whose name matches the pattern
+    *YYYY-MM-DD.SUFFIX, where SUFFIX is either 'png' or 'zip'.  The
+    keys of the dict are strings of the form YYYY-MM-DD, and the value
+    for each key is the corresponding filename.  Note that this does
+    not allow for more than one file matching the pattern for a given
+    YYYY-MM-DD value, but that's consistent with our conventions about
+    how the images are stored."""
     imageDict = {}
-    for file in os.listdir(os.path.join(DIR,id,subdir)):
+    for file in os.listdir(os.path.join(Config.IMAGE_ROOT,dsmn,resdir)):
 	m = re.search('(\d\d\d\d-\d\d-\d\d)\.((png)|(zip))$', file)
 	if m:
             imageDict[m.group(1)] = file
     return imageDict
 
-csvfiles = []
-
-for dsmn in DATASET_IDS:
+def scan_data_source_images(dsmn):
+    """Scan all the resolution directories for a single data source, returning
+    a dict containing information about all the images found therein.  The returned
+    dict has the following structure:
+      {
+        "dsmn": "?????"                  # value of dsmn parameter passed in; a string
+        "dates": [ "YYYY-MM-DD", ... ],  # sorted list of strings in the format YYYY-MM-DD, giving
+                                         # the dates for which images are available for all resolutions
+                                         # for this data source
+        "imgs": {
+          "1000" : {
+              "YYYY-MM-DD" : "name-of-file-YYYY-MM-DD.png",
+              "YYYY-MM-DD" : "name-of-file-YYYY-MM-DD.png",
+              ...
+          },
+          "620" : {
+              "YYYY-MM-DD" : "name-of-file-YYYY-MM-DD.png",
+              "YYYY-MM-DD" : "name-of-file-YYYY-MM-DD.png",
+              ...
+          }
+        }
+      }
+    Issues a warning if there are any dates for which images are present
+    in some but not all of the resolution subdirs for the given data set.
+    The returned "dates" array, as well as the "imgs" dicts containing
+    the actual filenames, omits any dates not present in all resolutions."""
     imgs = {}
     datekeys = {}
-    for subdir in RESDIRS:
-        imgs[subdir] = images(dsmn,subdir)
-        datekeys[subdir] = set( imgs[subdir].keys() )
-    # set commonDates to the set of dates present in all img subdirs
-    commonDates = datekeys[RESDIRS[0]].intersection( *[datekeys[subdir] for subdir in RESDIRS] )
-    # check for images in each subdir whose dates are not in commonDates
-    for subdir in RESDIRS:
-        extraImgs = datekeys[subdir].difference(commonDates)
+    for resdir in Config.RESDIRS:
+        imgs[resdir] = scan_res_images(dsmn,resdir)
+        datekeys[resdir] = set( imgs[resdir].keys() )
+    # set commonDates to the set of dates present in all img resdirs
+    commonDates = datekeys[Config.RESDIRS[0]].intersection( *[datekeys[resdir] for resdir in Config.RESDIRS] )
+    # check for images in each resdir whose dates are not in commonDates
+    for resdir in Config.RESDIRS:
+        extraImgs = datekeys[resdir].difference(commonDates)
         if len(extraImgs) > 0:
-            print "Warning: %1d images found in %s/%s/%s for dates not present in all %s/%s/* subdirs" % (
-                len(extraImgs), DIR, dsmn, subdir, DIR, dsmn)
+            print "Warning: %1d images found in %s/%s/%s for dates not present in all %s/%s/* resdirs" % (
+                len(extraImgs), Config.IMAGE_ROOT, dsmn, resdir, Config.IMAGE_ROOT, dsmn)
             for img in extraImgs:
                 print "    %s" % img
-    csvfile = os.path.join(dsmn, dsmn + "--" + date_generated + ".csv")
-    nimages = 0
-    web_image_dir = os.path.join(DIR, dsmn, "web")
-    if not os.path.exists(web_image_dir):
-        os.mkdir(web_image_dir)
-    with open(os.path.join(DIR, csvfile), "w") as f:
-        f.write(csvheader() + "\n")
-        for date in sorted(commonDates):
-            web_image = "%s--web--%s.png" % (dsmn, date)
-            image_url = URL_PREFIX + os.path.join(dsmn, 'web', web_image)
-            if os.path.exists(os.path.join(DIR, dsmn, "web", web_image)):
-                os.remove(os.path.join(DIR, dsmn, "web", web_image))
-            os.symlink(os.path.join("..", "620", imgs["620"][date]), os.path.join(DIR, dsmn, "web", web_image))
-            if date != "0000-00-00":
-                f.write(csvline(dsmn, date, image_url,
-                                [os.path.join(dsmn, res, imgs[res][date]) for res in RESDIRS]
-                                ) + "\n")
-                nimages += 1
-    print "wrote %1d images to %s" % (nimages, os.path.join(DIR, csvfile))
-    feedfile = os.path.join(DIR, dsmn, "feed.csv")
-    with open(os.path.join(DIR, feedfile), "w") as f:
-        f.write(URL_PREFIX + csvfile + "\n")
-    print "wrote %s" % feedfile
+                del imgs[resdir][img]
+    return {
+        "dsmn"   : dsmn,
+        "dates"  : sorted(commonDates),
+        "imgs"   : imgs
+    }
 
 
-#feedfile = os.path.join(DIR, "feed.csv")
-#with open(feedfile, "w") as f:
-#    for csvfile in csvfiles:
-#        f.write(URL_PREFIX + csvfile + "\n")
-#print "wrote %s" % feedfile
+def scan_snapshot_feed_files(dsmn):
+    """Return a set of strings giving the YYYY-MM-DD formatted time stamps
+    of all images mentioned in all snapshot feed files present in the
+    data source directory for a given data source.  dsmn is the machine
+    name of the data source.  Scans the data source directory for all
+    existing snapshot feed files and parses them all to construct the
+    returned set."""
+    dates = set()
+    for file in os.listdir(os.path.join(Config.IMAGE_ROOT,dsmn)):
+	m = re.search('(\d\d\d\d-\d\d-\d\d-+\d\d-\d\d-\d\d)\.csv$', file)
+	if m:
+            with open(os.path.join(Config.IMAGE_ROOT,dsmn,file), 'r') as f:
+                csvreader = csv.reader(f)
+                csvreader.next() # skip header line
+                for row in csvreader:
+                    date = "%s-%s" % (row[2], row[3])
+                    dates.add(date)
+    return dates
 
-#guid:                 "usdm-2000-01-04"
-#dsmn:                 "usdm"
-#ptk:                  "2000"
-#stk:                  "01-04"
-#title:                "USDM for 2000-01-04",
-#image_url:            "http://datasnapshots-images.nemac.com:8080/usdm/620/2000/usdm--620--2000-01-04.png",
-#about:                "",
-#date_generated:       "2000-01-04",
-#download_title:       "620 PX, 940 PX, High res",
-#download_url          "example.com,example.com,example.com"
-#
+# guid,dsmn,ptk,stk,title,image_url,about,date_generated,download_title,download_url
 
+def append_to_master_feed_file(line):
+    """Append a single line to the master feed file; a newline will be written
+    after the contents of the `line` argument.  The file is opened for appending,
+    the line is written, and the file closed, before this function returns."""
+    master_feed_file = os.path.join(Config.IMAGE_ROOT, "feed.csv")
+    with open(os.path.join(Config.IMAGE_ROOT, master_feed_file), "a") as f:
+        f.write(line + "\n")
 
+def process_data_source(dsmn):
+    images = scan_data_source_images(dsmn)
+    imgs = images['imgs']
+    dates_already_processed = scan_snapshot_feed_files(dsmn)
+    new_dates = set(images["dates"])
+    new_dates.remove("0000-00-00")
+    new_dates = new_dates.difference(dates_already_processed)
+    if new_dates:
+        web_image_dir = os.path.join(Config.IMAGE_ROOT, dsmn, "web")
+        if not os.path.exists(web_image_dir):
+            os.mkdir(web_image_dir)
+        nimages = 0
+        snapshot_feed_file = os.path.join(dsmn, dsmn + "--" + date_generated + ".csv")
+        with open(os.path.join(Config.IMAGE_ROOT, snapshot_feed_file), "w") as f:
+            f.write(snapshot_feed_header() + "\n")
+            for date in sorted(new_dates):
+                web_image = "%s--web--%s.png" % (dsmn, date)
+                image_url = Config.URL_PREFIX + os.path.join(dsmn, 'web', web_image)
+                if os.path.exists(os.path.join(Config.IMAGE_ROOT, dsmn, "web", web_image)):
+                    os.remove(os.path.join(Config.IMAGE_ROOT, dsmn, "web", web_image))
+                os.symlink(os.path.join("..", "620", imgs["620"][date]), os.path.join(Config.IMAGE_ROOT, dsmn, "web", web_image))
+                if date != "0000-00-00":
+                    f.write(snapshot_feed_line(dsmn, date, image_url,
+                                               [os.path.join(dsmn, res, imgs[res][date]) for res in Config.RESDIRS]
+                                           ) + "\n")
+                    nimages += 1
+        print "wrote %1d images to %s" % (nimages, os.path.join(Config.IMAGE_ROOT, snapshot_feed_file))
+        append_to_master_feed_file(Config.URL_PREFIX + snapshot_feed_file)
 
-
-
-
-
-
-
+for dsmn in Config.DATA_SOURCE_IDS:
+    process_data_source(dsmn)
