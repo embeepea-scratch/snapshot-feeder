@@ -31,9 +31,20 @@ parser = optparse.OptionParser(usage='feeder [options]',
                                description='Creates and/or updates the master feed file and '
                                + 'snapshot feed files on a Data Snapshots image server.')
 parser.add_option('--weblinks-only',
-                  help="delete and re-create the `web` resolution directory links "
-                   + "for all images on the server; does not create or update any feed files",
+                  help="make sure that the `web` resolution directory links "
+                  + "for all images on the server are present and correct, and "
+                  + "remove any existing web links to non-existent images; does "
+                  + "not create or update any feed files",
                   dest='weblinksOnly', default=False, action='store_true')
+parser.add_option('--delete',
+                  help="delete all feed files, including the master feed file; "
+                  + "does not (re)generate any feed files -- only deletes existing ones.",
+                  dest='delete', default=False, action='store_true')
+parser.add_option('--limit-feed-lines',
+                  help="put at most N lines into any one feed file; generates multiple feed "
+                  + "files when images for more than N new dates are found for a data source.",
+                  metavar='N', dest='feedLinesLimit', type='int', default=-1)
+
 (opts, args) = parser.parse_args()
 
 def get_timestamp_string():
@@ -66,7 +77,7 @@ def snapshot_feed_line(dsmn, date, image_url, downloads):
     title = dsmn + " for " + date
     about = ""
     download_title = ", ".join(Config.RESDIR_TITLES)
-    download_url = ",".join([(Config.URL_PREFIX + file) for file in downloads])
+    download_url = ",".join([(Config.IMAGE_URL_PREFIX + file) for file in downloads])
     return ",".join( ('"' + f + '"') for f in [guid,
                                                dsmn,
                                                ptk,
@@ -154,75 +165,144 @@ def scan_snapshot_feed_files(dsmn):
     existing snapshot feed files and parses them all to construct the
     returned set."""
     dates = set()
-    for file in os.listdir(os.path.join(Config.IMAGE_ROOT,dsmn)):
-	m = re.search('(\d\d\d\d-\d\d-\d\d-+\d\d-\d\d-\d\d)\.csv$', file)
-	if m:
-            with open(os.path.join(Config.IMAGE_ROOT,dsmn,file), 'r') as f:
-                csvreader = csv.reader(f)
-                csvreader.next() # skip header line
-                for row in csvreader:
-                    date = "%s-%s" % (row[2], row[3])
-                    dates.add(date)
+    d = os.path.join(Config.FEED_ROOT,dsmn)
+    if os.path.exists(d):
+        for file in os.listdir(d):
+            m = re.search('\.csv$', file)
+            if m:
+                with open(os.path.join(Config.FEED_ROOT,dsmn,file), 'r') as f:
+                    csvreader = csv.reader(f)
+                    csvreader.next() # skip header line
+                    for row in csvreader:
+                        date = "%s-%s" % (row[2], row[3])
+                        dates.add(date)
     return dates
 
 # guid,dsmn,ptk,stk,title,image_url,about,date_generated,download_title,download_url
+
+def master_feed_file_path():
+    """Return the absolute path of the master feed file, as a string."""
+    return os.path.join(Config.FEED_ROOT, "feed.csv")
 
 def append_to_master_feed_file(line):
     """Append a single line to the master feed file; a newline will be written
     after the contents of the `line` argument.  The file is opened for appending,
     the line is written, and the file closed, before this function returns."""
-    master_feed_file = os.path.join(Config.IMAGE_ROOT, "feed.csv")
-    with open(os.path.join(Config.IMAGE_ROOT, master_feed_file), "a") as f:
+    with open(master_feed_file_path(), "a") as f:
         f.write(line + "\n")
 
+def web_link_name(dsmn, date):
+    """Construct the name of the web link for an image, based on data source
+    machine name and date; returns a string."""
+    return "%s--web--%s.png" % (dsmn, date)
+
+def ensure_directory(dirname):
+    """Create directory `dirname` if it does not already exist."""
+    if not os.path.exists(dirname):
+            os.mkdir(dirname)
+
 def create_web_link(dsmn, date, imgs):
-    """Create a symlink to the `620` resolution version of an image in the `web`
-    resolution directory.  Creates the web resolution directory if it does not
-    already exist.  Returns the URL of the created link.  `dsmn` is the machine name
-    of a data source, `date` is a YYYY-MM-DD string, and `imgs` is a nested dictionary
-    giving the names of the existing images for the data source, keyed by
-    resolution first, then date (`imgs` is the value of the "imgs" key in the
-    dictionary returned by scan_data_source_images()."""
+    """Create a symlink to the `620` resolution version of an image in the
+    `web` resolution directory.  Creates the web resolution directory
+    if it does not already exist.  Returns the URL of the created
+    link.  `dsmn` is the machine name of a data source, `date` is a
+    YYYY-MM-DD string, and `imgs` is a nested dictionary giving the
+    names of the existing images for the data source, keyed by
+    resolution first, then date (`imgs` is the value of the "imgs" key
+    in the dictionary returned by scan_data_source_images().  Works
+    non-destructively, meaning that if the link already exists, and
+    points to the correct `620` resolution version of the image, does
+    not delete or recreate the link, but still returns the URL of the
+    link."""
     web_res_dir = os.path.join(Config.IMAGE_ROOT, dsmn, "web")
-    if not os.path.exists(web_res_dir):
-        os.mkdir(web_res_dir)
-    web_png = "%s--web--%s.png" % (dsmn, date)
+    ensure_directory(web_res_dir)
+    web_png = web_link_name(dsmn, date)
     web_png_path = os.path.join(web_res_dir, web_png)
+    linkpath = os.path.join("..", "620", imgs["620"][date])
+    needlink = False
     if os.path.exists(web_png_path):
-        os.remove(web_png_path)
-    os.symlink(os.path.join("..", "620", imgs["620"][date]), web_png_path)
-    return Config.URL_PREFIX + os.path.join(dsmn, 'web', web_png)
+        oldpath = os.readlink(web_png_path)
+        if oldpath != linkpath:
+            os.remove(web_png_path)
+            needlink = true
+    if needlink:
+        os.symlink(linkpath, web_png_path)
+    return Config.IMAGE_URL_PREFIX + os.path.join(dsmn, 'web', web_png)
+
+def n_chunk(lst,n):
+    """Break a list `lst` into chunks of size at most `n`; returns a list of lists."""
+    for i in xrange(0, len(lst), n):
+        yield lst[i:i+n]
+
+def write_snapshot_feed_file(dsmn, name_base, sequence_number, dates, imgs):
+    snapshot_feed_file = os.path.join(dsmn, 
+                                      "%s%s.csv" % (name_base, 
+                                                    ("-%03d" % sequence_number)
+                                                    if (sequence_number is not None)
+                                                    else ""))
+    nimages = 0
+    with open(os.path.join(Config.FEED_ROOT, snapshot_feed_file), "w") as f:
+        f.write(snapshot_feed_header() + "\n")
+        for date in dates:
+            web_image_url = create_web_link(dsmn, date, imgs)
+            f.write(snapshot_feed_line(dsmn, date, web_image_url,
+                                       [os.path.join(dsmn, res, imgs[res][date]) for res in Config.RESDIRS]
+                                   ) + "\n")
+            nimages += 1
+    print "wrote %1d images to %s" % (nimages, os.path.join(Config.FEED_ROOT, snapshot_feed_file))
+    append_to_master_feed_file(Config.FEED_URL_PREFIX + snapshot_feed_file)
+
 
 def process_data_source(dsmn):
     images = scan_data_source_images(dsmn)
     imgs = images['imgs']
     dates_already_processed = scan_snapshot_feed_files(dsmn)
     new_dates = set(images["dates"])
-    new_dates.remove("0000-00-00") # skip the "0000-00-00" date
-    new_dates = new_dates.difference(dates_already_processed)
+    # treat the "0000-00-00" date specially
+    if "0000-00-00" in new_dates:
+        create_web_link(dsmn, "0000-00-00", imgs) # create the web link for it
+        new_dates.remove("0000-00-00") # remove it from further processing
+    # eliminate dates already processed:
+    new_dates = sorted(new_dates.difference(dates_already_processed))
+    # process new dates:
     if new_dates:
-        nimages = 0
-        snapshot_feed_file = os.path.join(dsmn, dsmn + "--" + date_generated + ".csv")
-        with open(os.path.join(Config.IMAGE_ROOT, snapshot_feed_file), "w") as f:
-            f.write(snapshot_feed_header() + "\n")
-            for date in sorted(new_dates):
-                web_image_url = create_web_link(dsmn, date, imgs)
-                f.write(snapshot_feed_line(dsmn, date, web_image_url,
-                                           [os.path.join(dsmn, res, imgs[res][date]) for res in Config.RESDIRS]
-                                       ) + "\n")
-                nimages += 1
-        print "wrote %1d images to %s" % (nimages, os.path.join(Config.IMAGE_ROOT, snapshot_feed_file))
-        append_to_master_feed_file(Config.URL_PREFIX + snapshot_feed_file)
+        ensure_directory(os.path.join(Config.FEED_ROOT, dsmn))
+        if opts.feedLinesLimit > -1 and len(new_dates) > opts.feedLinesLimit:
+            chunk_i = 0
+            for chunk in n_chunk(new_dates, opts.feedLinesLimit):
+                write_snapshot_feed_file(dsmn, dsmn + "--" + date_generated, chunk_i, chunk, imgs)
+                chunk_i += 1
+        else:
+            write_snapshot_feed_file(dsmn, dsmn + "--" + date_generated, None, new_dates, imgs)
 
 def recreate_web_links(dsmn):
+    """Update the web links for all images for a data source; make sure that links are correct
+    for all images present, and remove any links that point to non-existent images."""
     images = scan_data_source_images(dsmn)
     imgs = images['imgs']
+    # make sure that web links for all current images are present:
     for date in images['dates']:
         create_web_link(dsmn, date, imgs)
+    # remove any web links that point to non-existent images
     for orphan_date in set(scan_res_images(dsmn,'web').keys()).difference(set(images['dates'])):
-        os.remove(os.path.join(Config.IMAGE_ROOT, dsmn, 'web', "%s--web--%s.png" % (dsmn,orphan_date)))
+        os.remove(os.path.join(Config.IMAGE_ROOT, dsmn, 'web', web_link_name(dsmn,orphan_date)))
         print "removing orphan link: %s" % orphan_date
 
+def delete_feed_files(dsmn):
+    """Delete all the feed files for a data source."""
+    d = os.path.join(Config.FEED_ROOT, dsmn)
+    for f in os.listdir(d):
+	m = re.search('\.csv$', f)
+	if m:
+            os.remove(os.path.join(d, f))
+
+if opts.delete:
+    for dsmn in Config.DATA_SOURCE_IDS:
+        delete_feed_files(dsmn)
+    f = master_feed_file_path()
+    if os.path.exists(f):
+        os.remove(f)
+    sys.exit(0)
 
 for dsmn in Config.DATA_SOURCE_IDS:
     if opts.weblinksOnly:

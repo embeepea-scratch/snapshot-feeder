@@ -1,5 +1,7 @@
 IMAGE_ROOT = "/var/www/Images"
 
+FEED_ROOT = IMAGE_ROOT
+
 URL_PREFIX = "http://larry.nemac.org/Images/"
 
 DATA_SOURCE_IDS = [
