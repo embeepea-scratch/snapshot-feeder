@@ -188,7 +188,9 @@ def scan_snapshot_feed_files(dsmn):
     d = os.path.join(Config.FEED_ROOT,dsmn)
     if os.path.exists(d):
         for file in os.listdir(d):
-            m = re.search('\.csv$', file)
+            # only match csv files that contain YYYY-MM-DD date strings; this
+            # ensures that we skip the master 'feed.csv' files:
+            m = re.search('\d\d\d\d-\d\d-\d\d.*\.csv$', file)
             if m:
                 with open(os.path.join(Config.FEED_ROOT,dsmn,file), 'r') as f:
                     csvreader = csv.reader(f)
