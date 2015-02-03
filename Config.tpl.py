@@ -1,8 +1,8 @@
-IMAGE_ROOT = "/var/www/Images"
+IMAGE_ROOT       = "/var/www/Images"
+IMAGE_URL_PREFIX = "http://larry.nemac.org/Images/"
 
-FEED_ROOT = IMAGE_ROOT
-
-URL_PREFIX = "http://larry.nemac.org/Images/"
+FEED_ROOT        = IMAGE_ROOT
+FEED_URL_PREFIX  = IMAGE_URL_PREFIX
 
 DATA_SOURCE_IDS = [
     'averagetemp-monthly-cmb',

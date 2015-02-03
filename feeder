@@ -25,7 +25,20 @@
 
 
 import os, re, datetime, sys, csv, optparse
-import Config
+
+try:
+    import Config
+except:
+    print """
+Error: Config.py not found
+
+  Feeder must be run from a directory containing a file named 'Config.py' which
+  contains local configuration settings.  The file 'Config.tpl.py' which comes
+  with feeder can be used as a template for creating a 'Config.py' file; see
+  the instructions in 'Config.tpl.py' for details.
+
+"""
+    sys.exit(-1)
 
 parser = optparse.OptionParser(usage='feeder [options]',
                                description='Creates and/or updates the master feed file and '
