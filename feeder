@@ -234,12 +234,8 @@ def n_chunk(lst,n):
     for i in xrange(0, len(lst), n):
         yield lst[i:i+n]
 
-def write_snapshot_feed_file(dsmn, name_base, sequence_number, dates, imgs):
-    snapshot_feed_file = os.path.join(dsmn, 
-                                      "%s%s.csv" % (name_base, 
-                                                    ("-%03d" % sequence_number)
-                                                    if (sequence_number is not None)
-                                                    else ""))
+def write_snapshot_feed_file(dsmn, name_base, name_suffix, dates, imgs):
+    snapshot_feed_file = os.path.join(dsmn, "%s%s.csv" % (name_base, name_suffix))
     nimages = 0
     with open(os.path.join(Config.FEED_ROOT, snapshot_feed_file), "w") as f:
         f.write(snapshot_feed_header() + "\n")
@@ -270,10 +266,12 @@ def process_data_source(dsmn):
         if opts.feedLinesLimit > -1 and len(new_dates) > opts.feedLinesLimit:
             chunk_i = 0
             for chunk in n_chunk(new_dates, opts.feedLinesLimit):
-                write_snapshot_feed_file(dsmn, dsmn + "--" + date_generated, chunk_i, chunk, imgs)
+                write_snapshot_feed_file(dsmn, dsmn + "--" + date_generated,
+                                         ".%03d" % chunk_i, chunk, imgs)
                 chunk_i += 1
         else:
-            write_snapshot_feed_file(dsmn, dsmn + "--" + date_generated, None, new_dates, imgs)
+            write_snapshot_feed_file(dsmn, dsmn + "--" + date_generated,
+                                     "", new_dates, imgs)
 
 def recreate_web_links(dsmn):
     """Update the web links for all images for a data source; make sure that links are correct
