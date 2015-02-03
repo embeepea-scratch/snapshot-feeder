@@ -41,7 +41,7 @@ Error: Config.py not found
     sys.exit(-1)
 
 parser = optparse.OptionParser(usage='feeder [options]',
-                               description='Creates and/or updates the master feed file and '
+                               description='Creates and/or updates the master feed files and '
                                + 'snapshot feed files on a Data Snapshots image server.')
 parser.add_option('--weblinks-only',
                   help="make sure that the `web` resolution directory links "
@@ -50,13 +50,20 @@ parser.add_option('--weblinks-only',
                   + "not create or update any feed files",
                   dest='weblinksOnly', default=False, action='store_true')
 parser.add_option('--delete',
-                  help="delete all feed files, including the master feed file; "
+                  help="delete all feed files, including the master feed files; "
                   + "does not (re)generate any feed files -- only deletes existing ones.",
                   dest='delete', default=False, action='store_true')
 parser.add_option('--limit-feed-lines',
                   help="put at most N lines into any one feed file; generates multiple feed "
                   + "files when images for more than N new dates are found for a data source.",
                   metavar='N', dest='feedLinesLimit', type='int', default=-1)
+parser.add_option('--remaster',
+                  help="regenerate all master feed files, ensuring that each data source's "
+                  + "master feed file includes the URLs of all existing snapshot feed files "
+                  + "for that data source.  Does not check for new images, or generate any "
+                  + "new snapshot feed files, or modify any existing snapshot feed files in "
+                  + "any way.",
+                  dest='remaster', default=False, action='store_true')
 
 (opts, args) = parser.parse_args()
 
@@ -193,16 +200,18 @@ def scan_snapshot_feed_files(dsmn):
 
 # guid,dsmn,ptk,stk,title,image_url,about,date_generated,download_title,download_url
 
-def master_feed_file_path():
-    """Return the absolute path of the master feed file, as a string."""
-    return os.path.join(Config.FEED_ROOT, "feed.csv")
+def master_feed_file_path(dsmn):
+    """Return the absolute path of the master feed file for a data source, as a string."""
+    return os.path.join(Config.FEED_ROOT, dsmn, "feed.csv")
 
-def append_to_master_feed_file(line):
-    """Append a single line to the master feed file; a newline will be written
-    after the contents of the `line` argument.  The file is opened for appending,
-    the line is written, and the file closed, before this function returns."""
-    with open(master_feed_file_path(), "a") as f:
+def append_to_master_feed_file(dsmn, line):
+    """Append a single line to the master feed file for a data source; a newline
+    will be written after the contents of the `line` argument.  The file is
+    opened for appending, the line is written, and the file closed, before this
+    function returns."""
+    with open(master_feed_file_path(dsmn), "a") as f:
         f.write(line + "\n")
+    print "Updated %s" % master_feed_file_path(dsmn)
 
 def web_link_name(dsmn, date):
     """Construct the name of the web link for an image, based on data source
@@ -258,8 +267,8 @@ def write_snapshot_feed_file(dsmn, name_base, name_suffix, dates, imgs):
                                        [os.path.join(dsmn, res, imgs[res][date]) for res in Config.RESDIRS]
                                    ) + "\n")
             nimages += 1
-    print "wrote %1d images to %s" % (nimages, os.path.join(Config.FEED_ROOT, snapshot_feed_file))
-    append_to_master_feed_file(Config.FEED_URL_PREFIX + snapshot_feed_file)
+    print "Wrote %1d images to %s" % (nimages, os.path.join(Config.FEED_ROOT, snapshot_feed_file))
+    append_to_master_feed_file(dsmn, Config.FEED_URL_PREFIX + snapshot_feed_file)
 
 
 def process_data_source(dsmn):
@@ -307,16 +316,30 @@ def delete_feed_files(dsmn):
 	if m:
             os.remove(os.path.join(d, f))
 
+def remaster(dsmn):
+    """Regenerate the master feed file for the given data source, making sure
+    it contains the URLs for all current snapshot feed files for that data source."""
+    d = os.path.join(Config.FEED_ROOT, dsmn)
+    files = []
+    for file in os.listdir(d):
+	m = re.search('\.csv$', file)
+	if m and file != "feed.csv":
+            files.append(file)
+    master_feed_file = os.path.join(Config.FEED_ROOT, dsmn, "feed.csv")
+    with open(master_feed_file, "w") as f:
+        for file in sorted(files):
+            f.write(Config.FEED_URL_PREFIX + dsmn + "/" + file + "\n")
+    print "Wrote %s" % master_feed_file
+
 if opts.delete:
     for dsmn in Config.DATA_SOURCE_IDS:
         delete_feed_files(dsmn)
-    f = master_feed_file_path()
-    if os.path.exists(f):
-        os.remove(f)
     sys.exit(0)
 
 for dsmn in Config.DATA_SOURCE_IDS:
     if opts.weblinksOnly:
         recreate_web_links(dsmn)
+    elif opts.remaster:
+        remaster(dsmn)
     else:
         process_data_source(dsmn)

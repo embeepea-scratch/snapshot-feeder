@@ -150,19 +150,21 @@ Feed Files
 
 The Data Snapshots module imports image URLS and metadata from the image
 server through a collection of _feed_ files.  There are two types of feed files:
-a single _master feed file_, and many individual _snapshot feed files_.
+_master feed files_, and _snapshot feed files_.
 
-The individual _snapshot feed files_ are located in the data source image directories.
-Each line in one of these files contains a comma-delimited set of fields that give
-the metadata and URLs associated with a _Data Snapshot_ node.  The
-snapshot feed files are named according to the pattern
+The _snapshot feed files_ contain URLs and other data associated with
+_Data Snapshot_ nodes; each line in one of these files contains the information
+that Drupal uses to import one _Data Snapshot_ node.  These
+files are named according to one of the patterns
 
   ```
       [machine-name]--[YYYY-MM-DD--HH-mm-ss].csv
+      [machine-name]--[YYYY-MM-DD--HH-mm-ss].NNN.csv
   ```
 
-where `[machine-name]` is the machine name of the data source, and `[YYYY-MM-DD-HH-mm-ss]` is
-a time stamp that indicates when the feed file was generated.  This time stamp does
+where `[machine-name]` is the machine name of the data source, `[YYYY-MM-DD-HH-mm-ss]` is
+a time stamp that indicates when the feed file was generated, and `NNN` is a sequence
+number (not all snapshot feed files have sequence numbers).  The time stamp does
 not necessarily relate to the dates of the images mentioned in the file -- it is simply
 used as a unique key to make it easy to keep track of whether the file has been downloaded and
 processed.
@@ -172,31 +174,47 @@ for a data source, a new snapshot feed file is created for that data source, con
 the image URLS and metadata for the _Data Snapshot_ nodes corresponding to those new
 images.
 
-The _maser feed file_ is named `feed.csv` and should be located in the
-`IMAGE_ROOT` directory.  This file should contain the URLs of all the
-individual snapshot feed files.
+In general, there will be a collection of snapshot feed files corresponding
+to each data source, and whenever new images are added for the data source,
+a new snapshot feed file is generated for those images.
+
+In addition to a collection of snapshot feed files, there is also a
+single _maser feed file_ associated with each data source (one master
+feed file for each data source).  The master feed file simply contains
+the URLs of all the snapshot feed files for the data source.  The
+master feed file is named `feed.csv` and is located in the same
+directory where that data source's snapshot feed files live.
+
 
 The Import Process
 ------------------
 
 On the Data Snapshots module settings page in the Drupal
 administrative user interface, there is a button labeled _Run Import
-Now_, and a text field labeled _Import URL_.  The _Run Import Now_
-button will cause Drupal to download the master feed file from the
-given _Import URL_, examine the list of snapshot feed file URLs that
-it contains, and to download any of those snapshot feed files that it has
-not already downloaded.  For each new snapshot feed file downloaded,
-the module parses its contents and creates a new Data Snapshot node
-for each line in the file.  The module keeps track of the snapshot feed
-file URLs that it downloads and will not download or process the same
-file twice.
+Now_.  Clicking that button will cause Drupal to download the master
+feed files for all the current Data Source nodes, and to make a list
+of all the snapshot feed file URLs that they contain.  It then
+eliminates from this list any URLs that it has previously processed,
+and for each URL that remains, the snapshot feed file is downloaded
+and Data Snapshot nodes are created for each line in the file.  The
+URL of the snapshot feed file is then added to Drupal's internal list
+of snapshot feed file URLs that have been processed, so that the same
+file will not be downloaded again in the future.
+
+NOTE: The list of URLs of snapshot feed files that have been processed
+is stored in the custom table `data_snapshots_import_urls`.  There is
+no way to clear out this table from the GUI; if you want to clear this
+table to re-import all Data Snapshot nodes, you'll have to do so by
+hand.  Note that the import process does NOT check for duplicate
+nodes, though, so it's important to delete all nodes of type Data
+Snapshot before doing this.
 
 Feed Generation and Updating
 ----------------------------
 
 The `feeder` script examines all the images in the entire IMAGE_ROOT
-directory heirarchy, and generates or updates both the master feed
-file and the individual snapshot feed files accordingly.
+directory heirarchy, and generates or updates the snapshot feed files
+and master feed files accordingly.
 
 By default, when invoked with no arguments, `feeder` examines both
 the existing images and the existing snapshot feed files present for
@@ -205,8 +223,8 @@ included in any existing snapshot feed files for the data source, it
 creates a new snapshot feed file for those images.  (No new snapshot
 feed file is created for a data source if all the images for it are
 already contained in existing snapshot feed files.)  For each new
-snapshot feed file it creates, `feeder` updates the master
-feed file by appending the URL of the new snapshot feed file to the
+snapshot feed file it creates, `feeder` updates the corresponding master
+feed files by appending the URL of the new snapshot feed file to the
 end.
 
 So, the normal workflow for adding images to the image server
