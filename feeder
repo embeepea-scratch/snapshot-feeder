@@ -243,12 +243,13 @@ def create_web_link(dsmn, date, imgs):
     web_png = web_link_name(dsmn, date)
     web_png_path = os.path.join(web_res_dir, web_png)
     linkpath = os.path.join("..", "620", imgs["620"][date])
-    needlink = False
+    needlink = True
     if os.path.exists(web_png_path):
         oldpath = os.readlink(web_png_path)
-        if oldpath != linkpath:
+        if oldpath == linkpath:
+            needlink = False
+        else:
             os.remove(web_png_path)
-            needlink = true
     if needlink:
         os.symlink(linkpath, web_png_path)
     return Config.IMAGE_URL_PREFIX + os.path.join(dsmn, 'web', web_png)
