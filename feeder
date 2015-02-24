@@ -245,11 +245,15 @@ def create_web_link(dsmn, date, imgs):
     linkpath = os.path.join("..", "620", imgs["620"][date])
     needlink = True
     if os.path.exists(web_png_path):
-        oldpath = os.readlink(web_png_path)
-        if oldpath == linkpath:
-            needlink = False
+        if os.path.islink(web_png_path):
+            oldpath = os.readlink(web_png_path)
+            if oldpath == linkpath:
+                needlink = False
+            else:
+                os.remove(web_png_path)
         else:
-            os.remove(web_png_path)
+            print "Warning: %s exists and is not a symlink; remove it to get rid of this warning" % web_png_path
+            needlink = False
     if needlink:
         os.symlink(linkpath, web_png_path)
     return Config.IMAGE_URL_PREFIX + os.path.join(dsmn, 'web', web_png)
