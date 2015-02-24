@@ -15,9 +15,9 @@ distinct sources of data.  Each Data Source corresponds to a specific
 data set which issues new data releases on a regular basis.  For example,
 the "Total Monthly Precipitation" data source issues a new data release
 each month, and the "Drought Monitor" data source issues a new data
-release each week.  There will be a small number of nodes of this type;
-each one must be entered/edited manually, and its content generally does
-not change very often.
+release each week.  There will be a small number of nodes of type
+_Data Snapshot Data Source_; each one must be entered/edited manually,
+and its content generally does not change very often.
 
 Nodes of the _Data Snapshot_ content type correspond to data associated
 with a specific date for one _Data Source_.  Each _Data Snapshot_ node 
@@ -28,7 +28,7 @@ the "Total Monthly Precipitation" data source.  Each of these nodes
 contains links to 5 different images at various sizes/resolutions.
 
 In general there are many nodes of type _Data Snapshot_.
-Ror each data source, there is a _Data Snapshot_ node corresponding
+For each data source, there is a _Data Snapshot_ node corresponding
 to each date for which there are images from that data source.
 These nodes are typically not entered manually, rather they are imported
 in batches either automatically, or via the Drupal administrative
@@ -76,18 +76,6 @@ The names of the image files follow the very specific pattern:
 ```
     [machine-name]-[resolution]-[YYYY-MM-DD].*
 ```
-
-In addition to the resolution directories that contain the images
-themselves, each data source image directory also contains one
-additional resolution directory named `web`.  This directory does not
-contain images but rather contains symlinks to images in one of the
-other resolution directories These symlinks are used in contexts where
-a URL with a predictable pattern is needed to point to an image
-suitable for displaying in a web page.  These symlinks typically refer
-to the images in the `620` resolution directory, but the names of the
-`web` symlinks can be easily constructed from the data source name and
-date, as opposed to the names of the `620` resolution images, which
-include the image height which is not the same for every data set.
 
 For example:
 
@@ -144,6 +132,28 @@ For example:
         usdroughtmonitor-weekly-ndmc--web--2010-01-12.png
     ...
 ```
+
+Web Resolution Directory Symlinks
+---------------------------------
+
+In addition to the `620`,`1000`,`diy`,`hd`, and `hdsd` directories, 
+each data source image directory contains a directory named `web`.
+This directory does not
+contain images but rather contains symlinks to images in the `620`
+directory.  These symlinks are used in contexts where
+a URL with a predictable pattern is needed to refer to an image
+suitable for displaying in a web page -- the names of these symlinks
+depend only on the data set name and the date, and omit the exact
+pixel dimensions of the image.  (The heights of the `620` resolution
+images are not the same for all data sets, so the names of the
+`620` size image files can't easily be created based just on the
+data source name and date.)
+
+These symlinks are created and maintained by the feeder script.  In general,
+`feeder` creates a `web` symlink for an image whenever it adds that image to
+a snapshot feed file.  You can also use the `--weblinks-only` option to force
+it to recreate all web links for all images.
+
 
 Feed Files
 ----------
@@ -214,7 +224,9 @@ Feed Generation and Updating
 
 The `feeder` script examines all the images in the entire IMAGE_ROOT
 directory heirarchy, and generates or updates the snapshot feed files
-and master feed files accordingly.
+and master feed files accordingly. `Feeder` also creates and/or updates
+the `web` directory symlinks; see _Web Resolution Directory Symlinks_ above
+for more details about that.
 
 By default, when invoked with no arguments, `feeder` examines both
 the existing images and the existing snapshot feed files present for
